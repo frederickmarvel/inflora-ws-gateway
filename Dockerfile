@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /src/inflora-ws-gateway
 COPY inflora-shared /src/inflora-shared
 COPY inflora-ws-gateway/go.mod inflora-ws-gateway/go.sum ./
