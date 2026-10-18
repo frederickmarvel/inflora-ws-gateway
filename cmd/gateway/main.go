@@ -39,7 +39,7 @@ func main() {
 	validator := auth.NewValidator(cfg.TolkienURL, cfg.InternalKey, cfg.AuthCacheTTL)
 	store := &seq.Store{DB: database, Retention: cfg.ReplayWindow}
 	hub := ws.NewHub(cfg.MaxConnections)
-	natsConfig := events.NATSConfig{URL: cfg.NATSURL, Name: cfg.ServiceName, Stream: cfg.NATSStream, Subjects: []string{events.DonationCharged + ".>", events.OverlayTokenRotated + ".>"}}
+	natsConfig := events.NATSConfig{URL: cfg.NATSURL, Name: cfg.ServiceName, Stream: cfg.NATSStream, Subjects: []string{events.DonationCharged + ".>", events.OverlayTokenRotated + ".>", events.DonationReviewed + ".>"}}
 	donationNATS, err := events.NewNATSSubscriber(natsConfig)
 	if err != nil {
 		log.Fatal("nats donation subscriber", zap.Error(err))
@@ -50,6 +50,11 @@ func main() {
 		log.Fatal("nats rotation subscriber", zap.Error(err))
 	}
 	defer rotationNATS.Close()
+	reviewNATS, err := events.NewNATSSubscriber(natsConfig)
+	if err != nil {
+		log.Fatal("nats review subscriber", zap.Error(err))
+	}
+	defer reviewNATS.Close()
 	runCtx, stop := context.WithCancel(context.Background())
 	defer stop()
 	go func() {
@@ -60,6 +65,11 @@ func main() {
 	go func() {
 		if err := (subscriber.Rotation{N: rotationNATS, Auth: validator}).Run(runCtx); err != nil && runCtx.Err() == nil {
 			log.Error("rotation consumer stopped", zap.Error(err))
+		}
+	}()
+	go func() {
+		if err := (subscriber.Review{N: reviewNATS, Store: store, Hub: hub}).Run(runCtx); err != nil && runCtx.Err() == nil {
+			log.Error("review consumer stopped", zap.Error(err))
 		}
 	}()
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: handler.New(handler.Server{DB: database, Auth: validator, Store: store, Hub: hub, Heartbeat: cfg.HeartbeatInterval, Timeout: cfg.HeartbeatTimeout, Window: cfg.ReplayWindow, Version: "1.0.0", AllowedOrigins: cfg.AllowedOrigins, DevOpenOrigin: cfg.DevOpenOrigin, OverlayDir: handler.ResolveOverlayDir(cfg.OverlayDir)})}
